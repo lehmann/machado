@@ -1,0 +1,60 @@
+name: tests
+
+# Runs on every push to any branch (including main). Tags are excluded so
+# release tags don't re-run the suite unnecessarily.
+on:
+  push:
+    branches: ['**']
+
+# A newer push to the same branch cancels the in-progress run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: Server tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: server/requirements-ci.txt
+
+      - name: Install lightweight server deps
+        run: pip install -r server/requirements-ci.txt
+
+      - name: Run pytest
+        working-directory: server
+        run: python -m pytest
+
+  web:
+    name: Web tests (unit + integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The integration harness spawns `python3 -m uvicorn` with the fake-MT
+      # seam, so Python + the lightweight server deps must be present for the
+      # integration tests to actually run (instead of skipping).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: server/requirements-ci.txt
+
+      - name: Install lightweight server deps (for integration harness)
+        run: pip install -r server/requirements-ci.txt
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests (UI engine ↔ live server)
+        run: npm run test:integration

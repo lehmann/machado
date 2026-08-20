@@ -1,0 +1,8 @@
+# Converted model weights — large, regenerated via scripts/convert_model.sh
+models/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
