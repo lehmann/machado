@@ -298,6 +298,87 @@ textarea.text-area::placeholder {
   color: var(--text-muted);
 }
 
+/* ── CEFR sentence highlighting ── */
+
+.sentence {
+  cursor: help;
+  border-bottom: 2px solid transparent;
+  transition: background 0.12s;
+  border-radius: 2px;
+}
+
+.sentence:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Level colors: A1/A2 green → B1/B2 amber → C1/C2 red */
+.cefr-A1 { border-bottom-color: #3fb950; }
+.cefr-A2 { border-bottom-color: #57ab5a; }
+.cefr-B1 { border-bottom-color: #d29922; }
+.cefr-B2 { border-bottom-color: #e0982a; }
+.cefr-C1 { border-bottom-color: #f85149; }
+.cefr-C2 { border-bottom-color: #da3633; }
+
+.cefr-tip {
+  position: fixed;
+  z-index: 50;
+  width: 260px;
+  background: #0b1017;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  font-size: 13px;
+}
+
+.cefr-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cefr-badge {
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--text-muted);
+}
+
+.cefr-badge.cefr-A1, .cefr-badge.cefr-A2 { background: #2ea043; }
+.cefr-badge.cefr-B1, .cefr-badge.cefr-B2 { background: #bb8009; }
+.cefr-badge.cefr-C1, .cefr-badge.cefr-C2 { background: #da3633; }
+
+.cefr-tip-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cefr-tip-factors {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cefr-tip-factors li {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  padding-left: 12px;
+  position: relative;
+}
+
+.cefr-tip-factors li::before {
+  content: '·';
+  position: absolute;
+  left: 2px;
+  color: var(--text-muted);
+}
+
 .translating-indicator {
   display: flex;
   align-items: center;
@@ -462,6 +543,52 @@ textarea.text-area::placeholder {
   border: none;
   border-top: 1px solid var(--border);
   margin: 14px 0 12px;
+}
+
+/* ── Processing mode / consent ── */
+
+.settings-mode {
+  margin-bottom: 4px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.settings-toggle input[type="checkbox"] {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.settings-server-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 25px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-up { background: var(--success); }
+.status-dot-down { background: var(--danger); }
+.status-dot-idle {
+  background: var(--warning);
+  animation: pulse 1.1s ease-in-out infinite;
 }
 
 .settings-cache-row {

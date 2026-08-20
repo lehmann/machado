@@ -1,4 +1,5 @@
 import { pipeline, env } from '@xenova/transformers';
+import { assessSentence } from './cefr.js';
 
 // CRITICAL: disable local model lookup. When enabled (the default), transformers
 // first fetches http://<origin>/models/<model>/config.json etc. The Vite dev
@@ -197,13 +198,27 @@ self.addEventListener('message', async ({ data }) => {
       current = outputs.map(o => o.translation_text);
     }
 
-    // Re-wrap peeled brackets, then reassemble restoring original whitespace.
+    // Re-wrap peeled brackets to form the final translated sentences.
     const finals = current.map((t, i) => wraps[i].open + t + wraps[i].close);
+
+    // Build ordered display parts: 'gap' = whitespace to render verbatim,
+    // 'sentence' = a translated sentence carrying its CEFR assessment (scored
+    // in the TARGET language). The UI renders sentences as hoverable spans.
+    const tgtLang = direction.split('-')[1];
+    const parts = [];
     let ci = 0;
-    const resultText = segments
-      .map(s => s.lead + (s.core ? finals[ci++] : '') + s.trail)
-      .join('');
-    self.postMessage({ type: 'result', text: resultText, id });
+    for (const seg of segments) {
+      if (seg.core) {
+        const translation = finals[ci++];
+        if (seg.lead) parts.push({ type: 'gap', text: seg.lead });
+        parts.push({ type: 'sentence', text: translation, cefr: assessSentence(translation, tgtLang) });
+        if (seg.trail) parts.push({ type: 'gap', text: seg.trail });
+      } else if (seg.lead) {
+        parts.push({ type: 'gap', text: seg.lead });
+      }
+    }
+    const resultText = parts.map(p => p.text).join('');
+    self.postMessage({ type: 'result', text: resultText, parts, id });
   } catch (err) {
     self.postMessage({ type: 'error', message: err.message ?? String(err), id });
   }
