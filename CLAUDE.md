@@ -35,6 +35,12 @@ automatically at translate time:
   stand-in). Never enable it in production, and keep it out of any prod path.
 - **Privacy promise is user-visible.** The badge/footer must reflect the active
   mode. Offline or no-consent must always fall back to full client-side.
+- **Offline shell via `public/sw.js`** (hand-written, no Workbox). It stale-while-
+  revalidates same-origin assets, serves cached `index.html` for navigations, and
+  cache-firsts the `cdn.jsdelivr.net` ONNX `.wasm`. It deliberately does **not**
+  intercept HuggingFace model requests (Transformers.js caches those itself).
+  Registered in `src/main.jsx` **prod only** (dev would clash with Vite HMR); bump
+  `VERSION` in `sw.js` when shell caching logic changes so old caches are purged.
 
 ## Architecture
 

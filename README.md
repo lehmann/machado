@@ -133,6 +133,16 @@ no `main`**, em dois jobs paralelos: testes do servidor (pytest) e testes web
 (unit + integração). Usa as deps leves de CI acima — nada de GPU ou download de
 modelo.
 
+## Offline (PWA)
+
+O app é uma **PWA**: um service worker (`public/sw.js`) cacheia o shell da página
+(HTML/JS/CSS/worker) e o runtime `.wasm` do ONNX, então **a página principal abre
+mesmo sem internet** após a primeira visita online. Os pesos dos modelos são
+cacheados separadamente pelo Transformers.js (`useBrowserCache`), de modo que a
+tradução local também funciona offline uma vez baixados. O service worker só é
+registrado em build de produção (`npm run build` + `npm run preview`); em dev ele
+fica desativado para não conflitar com o HMR do Vite.
+
 ## Privacidade
 
 - **Padrão local:** nenhum texto sai do navegador; os modelos rodam via WASM/ONNX.

@@ -1,0 +1,19 @@
+{
+  "name": "machado — Tradutor PT ↔ DE",
+  "short_name": "machado",
+  "description": "Tradutor Português ↔ Alemão que funciona offline no seu navegador.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
