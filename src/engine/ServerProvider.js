@@ -25,18 +25,24 @@ export class ServerProvider {
   // Model cache lives on the server; nothing to clear from the browser.
   clearCache() {}
 
-  async health() {
+  // Full /health body (or null if unreachable). Used by the engine to read both
+  // the translation `ok` flag and per-language capabilities (e.g. grammar).
+  async info() {
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), this.healthTimeoutMs);
       const res = await fetch(`${this.baseUrl}/health`, { signal: ctrl.signal });
       clearTimeout(timer);
-      if (!res.ok) return false;
-      const body = await res.json().catch(() => null);
-      return !!body?.ok;
+      if (!res.ok) return null;
+      return await res.json().catch(() => null);
     } catch {
-      return false; // unreachable, aborted, offline — treat as unavailable
+      return null; // unreachable, aborted, offline — treat as unavailable
     }
+  }
+
+  async health() {
+    const body = await this.info();
+    return !!body?.ok;
   }
 
   async translate({ text, direction, id }) {

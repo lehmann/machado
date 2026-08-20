@@ -1,8 +1,9 @@
 # machado ⚒️ — Tradutor PT ↔ DE
 
 Tradutor **Português (Brasil) ↔ Alemão** com análise de dificuldade **CEFR
-(A1–C2)** por frase. Foi desenhado em torno de uma promessa de privacidade: por
-padrão, **os textos não saem do seu dispositivo**.
+(A1–C2)** por frase e **explicação gramatical** por palavra. Foi desenhado em
+torno de uma promessa de privacidade: por padrão, **os textos não saem do seu
+dispositivo**.
 
 O app funciona em dois modos, escolhidos automaticamente:
 
@@ -44,17 +45,29 @@ A pontuação CEFR combina três eixos — raridade de vocabulário (listas de
 frequência), comprimento da frase e complexidade sintática — e é mostrada num
 tooltip ao passar o mouse sobre cada frase traduzida.
 
+**Explicação gramatical:** clicar (ou selecionar) uma palavra no texto traduzido
+abre um tooltip com sua função gramatical (classe + morfologia) e **realça as
+outras palavras da frase impactadas por ela** — p.ex., no alemão, o gênero do
+substantivo governa a declinação de artigo/adjetivo, e o sujeito governa a
+conjugação do verbo. Como a tradução/CEFR, a análise tem **um contrato único** e
+**dois provedores**: heurística + léxico compacto no navegador (badge `≈ local`)
+ou spaCy no servidor (badge `☁️ servidor`), com o mesmo fraseado PT-BR gerado na
+UI (`src/grammar/describe.js`). O roteamento é por capacidade: o servidor só é
+usado se `/health` anuncia `models.grammar` para o idioma; senão, cai no local.
+
 ## Estrutura do repositório
 
 ```
 .
 ├── src/                    # Frontend React + Web Worker  → veja src/README.md
 │   ├── engine/             #   camada de indireção local/servidor
+│   ├── grammar/            #   análise gramatical (heurística + providers)
 │   ├── data/               #   listas de frequência (geradas)
 │   ├── cefr.js             #   estimador CEFR (navegador)
 │   └── translator.worker.js#   pivô OPUS-MT em Web Worker
 ├── server/                 # Backend FastAPI opcional      → veja server/README.md
 ├── scripts/build-freq.mjs  # gerador one-time das listas de frequência
+├── scripts/build-lexicon.mjs # gerador do léxico de gênero alemão (local)
 ├── test/                   # testes JS (unit + integração UI↔servidor)
 ├── .github/workflows/      # CI: testes a cada push
 ├── vite.config.js

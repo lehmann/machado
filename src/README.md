@@ -14,7 +14,7 @@ e [`../server/README.md`](../server/README.md).
 ```
 src/
 ├── main.jsx               # bootstrap React
-├── App.jsx                # UI: painéis, tooltip CEFR, configurações, estado
+├── App.jsx                # UI: painéis, tooltip CEFR, tooltip de gramática, configurações
 ├── index.css             # estilos
 ├── cefr.js               # estimador CEFR heurístico (modo local)
 ├── translator.worker.js  # Web Worker: pivô OPUS-MT (ONNX) + segmentação
@@ -22,6 +22,14 @@ src/
 │   ├── TranslatorEngine.js  # camada de indireção: resolve local vs servidor
 │   ├── LocalProvider.js     # envolve o Web Worker
 │   └── ServerProvider.js    # fala HTTP com o backend
+├── grammar/
+│   ├── describe.js          # ÚNICA fonte de fraseado PT-BR (token + relação)
+│   ├── heuristic.js         # analyzeLocal(text, lang) — regras + léxico
+│   ├── LocalGrammarProvider.js  # provider local (heurística)
+│   ├── ServerGrammarProvider.js # provider servidor (POST /grammar)
+│   └── data/
+│       ├── closed-class.js  # tabelas de artigos/pronomes/preposições DE+PT
+│       └── de-gender.js     # gênero de substantivos alemães (gerado, compacto)
 └── data/
     ├── freq-pt.js        # listas de frequência (geradas) — usadas pelo CEFR
     └── freq-de.js        #   (fonte única, reaproveitadas pelo servidor)
@@ -97,6 +105,38 @@ Transformers.js não anexa headers de auth no navegador), fixação dos binário
 servidor espelha essa mesma forma, enriquecida com a análise de dependências do
 spaCy.
 
+## Explicação gramatical (`grammar/`)
+
+Clicar ou selecionar uma palavra no painel de saída abre um tooltip com sua
+**função gramatical** e realça as palavras da frase **impactadas por ela**. Segue
+o mesmo padrão da tradução: **um contrato, dois provedores**.
+
+- **Contrato compartilhado** (local == servidor), por frase:
+  ```js
+  {
+    lang: 'de' | 'pt',
+    source: 'server' | 'local',          // → badge ☁️ servidor / ≈ local
+    tokens: [{ i, start, end, text, pos, lemma, morph:{Gender,Case,Number,Person,…}, isPunct }],
+    relations: [{ type, kind:'agreement'|'government'|'dependency', head, deps:[…], features:[…] }]
+  }
+  ```
+  `start/end` são offsets **relativos ao texto da frase** — a UI casa palavra↔token
+  por sobreposição de offsets (tolera divergências de tokenização).
+- **`describe.js` é a única fonte de fraseado PT-BR.** Os provedores emitem só
+  dados estruturados; `describeToken`/`describeRelation` viram texto. Isso garante
+  fraseado idêntico entre local e servidor e mantém o servidor enxuto.
+- **`LocalGrammarProvider`** → `heuristic.analyzeLocal` (regras + `data/closed-class.js`
+  + `data/de-gender.js`). Explicitamente aproximado (badge `≈ local`).
+- **`ServerGrammarProvider`** → `POST /grammar`; lança em falha (o engine trata o
+  fallback para o local).
+- **Roteamento por capacidade:** `engine.analyzeGrammar({ text, lang })` usa o
+  servidor só se `consent && online && /health.models.grammar[lang]`; senão, ou em
+  falha, cai no local. Resultados são cacheados por `(lang, text)` e o cache é
+  limpo a cada nova tradução.
+
+O léxico de gênero (`data/de-gender.js`) é gerado por `scripts/build-lexicon.mjs`
+(veja Scripts).
+
 ## Configuração e privacidade
 
 - **Token HuggingFace:** necessário no modo local para baixar modelos. Guardado
@@ -126,5 +166,6 @@ npm run preview   # serve o build
 Regenerar as listas de frequência (raro, one-time):
 
 ```bash
-node scripts/build-freq.mjs   # baixa OpenSubtitles freq lists → src/data/freq-*.js
+node scripts/build-freq.mjs      # baixa OpenSubtitles freq lists → src/data/freq-*.js
+node scripts/build-lexicon.mjs   # gera src/grammar/data/de-gender.js (gênero DE)
 ```
