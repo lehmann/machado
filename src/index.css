@@ -31,6 +31,9 @@ html, body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Never allow sideways scroll: a single overflowing element would make a
+     phone zoom the whole page out, so a portrait screen reads as "landscape". */
+  overflow-x: hidden;
 }
 
 #root {
@@ -164,6 +167,9 @@ html, body {
   margin-top: 5px;
   display: block;
   font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Translator layout ── */
@@ -178,6 +184,32 @@ html, body {
 }
 
 @media (max-width: 680px) {
+  .app {
+    padding: 0 14px;
+  }
+
+  /* Let the header wrap instead of forcing horizontal overflow on phones. */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 14px 0 12px;
+  }
+
+  .brand {
+    min-width: 0;
+  }
+
+  .brand-tag {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .privacy-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+  }
+
   .translator-layout {
     grid-template-columns: 1fr;
   }
@@ -185,7 +217,19 @@ html, body {
   .swap-btn {
     justify-self: center;
     transform: rotate(90deg);
-    margin: 0;
+    margin: 4px 0;
+  }
+
+  /* Portrait: size each panel to a share of the viewport so both are visible
+     with minimal scrolling, instead of two tall fixed blocks. */
+  .text-area {
+    min-height: 32vh;
+    font-size: 16px; /* keep ≥16px so iOS Safari doesn't zoom on focus */
+  }
+
+  /* Long output words wrap instead of forcing the panel wider than the screen. */
+  .text-area.output {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -198,6 +242,9 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Grid/flex items default to min-width:auto; without this a long word can
+     push the panel — and the whole layout — wider than the viewport. */
+  min-width: 0;
 }
 
 .panel-header {
@@ -323,6 +370,7 @@ textarea.text-area::placeholder {
   position: fixed;
   z-index: 50;
   width: 260px;
+  max-width: calc(100vw - 16px);
   background: #0b1017;
   border: 1px solid var(--border);
   border-radius: var(--radius);

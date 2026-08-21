@@ -353,6 +353,7 @@ export default function App() {
 
       <ModelStatusBar
         state={modelState}
+        activeMode={activeMode}
         hasToken={!!token}
         crossOriginIsolated={self.crossOriginIsolated}
         onOpenSettings={() => { setTokenDraft(token); setShowSettings(true); }}
@@ -572,7 +573,7 @@ function GrammarTooltip({ grammar, onClose }) {
   );
 }
 
-function ModelStatusBar({ state, hasToken, crossOriginIsolated, onOpenSettings }) {
+function ModelStatusBar({ state, activeMode, hasToken, crossOriginIsolated, onOpenSettings }) {
   if (state.status === 'idle') {
     return (
       <div className="status-bar status-info">
@@ -613,10 +614,15 @@ function ModelStatusBar({ state, hasToken, crossOriginIsolated, onOpenSettings }
   }
 
   if (state.status === 'ready') {
+    const onServer = activeMode === 'server';
     return (
       <div className="status-bar status-ready">
-        <span>✓</span>
-        <span>Modelo carregado · Tradução 100% offline</span>
+        <span>{onServer ? '☁️' : '✓'}</span>
+        <span>
+          {onServer
+            ? 'Tradução processada no servidor local'
+            : 'Modelo carregado · Tradução 100% offline'}
+        </span>
       </div>
     );
   }
