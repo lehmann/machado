@@ -13,7 +13,7 @@
 // Model weights come from HuggingFace and are cached separately by Transformers.js
 // (env.useBrowserCache), so we deliberately DON'T intercept those requests.
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `machado-shell-${VERSION}`;
 const RUNTIME_CACHE = `machado-runtime-${VERSION}`;
 const CDN_CACHE = `machado-cdn-${VERSION}`;
