@@ -97,7 +97,8 @@ as translation/CEFR: **one shared contract, two providers.**
 ## Commands
 
 ```bash
-npm run dev            # Vite dev server (http://localhost:5173)
+scripts/dev.sh         # start ALL services (frontend + optional backend); Ctrl+C stops both
+npm run dev            # Vite dev server only (http://localhost:5173)
 npm run build          # production build → dist/
 npm test               # JS unit + integration
 npm run test:unit      # node:test, no extra deps

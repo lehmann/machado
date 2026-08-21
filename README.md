@@ -66,6 +66,7 @@ usado se `/health` anuncia `models.grammar` para o idioma; senão, cai no local.
 │   ├── cefr.js             #   estimador CEFR (navegador)
 │   └── translator.worker.js#   pivô OPUS-MT em Web Worker
 ├── server/                 # Backend FastAPI opcional      → veja server/README.md
+├── scripts/dev.sh          # sobe todos os serviços (frontend + backend)
 ├── scripts/build-freq.mjs  # gerador one-time das listas de frequência
 ├── scripts/build-lexicon.mjs # gerador do léxico de gênero alemão (local)
 ├── test/                   # testes JS (unit + integração UI↔servidor)
@@ -82,6 +83,23 @@ Requer **Node 18+**.
 npm install
 npm run dev            # http://localhost:5173
 ```
+
+### Subir tudo de uma vez
+
+`scripts/dev.sh` inicializa **todos os serviços** (frontend + backend) e os
+encerra juntos no **Ctrl+C**. O backend é opcional: se as deps Python não
+estiverem instaladas, ele avisa e sobe só o frontend (o app roda 100% local).
+
+```bash
+scripts/dev.sh                  # frontend + backend (backend pulado se indisponível)
+scripts/dev.sh --frontend-only  # só o Vite
+scripts/dev.sh --server-only    # só o FastAPI
+scripts/dev.sh --fake-mt        # backend com tradução stand-in (sem modelo NLLB)
+```
+
+Quando o backend sobe, o script já exporta `VITE_SERVER_URL` para a UI — basta
+ligar **"Permitir processamento no servidor"** em ⚙ Configurações. Portas/host são
+configuráveis via `WEB_PORT`, `SERVER_HOST`, `SERVER_PORT`.
 
 O modo local baixa modelos do HuggingFace Hub na primeira tradução (~150 MB por
 sentido). O Hub exige autenticação: crie um token gratuito (somente leitura) em
