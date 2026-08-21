@@ -148,6 +148,11 @@ O léxico de gênero (`data/de-gender.js`) é gerado por `scripts/build-lexicon.
   refletem o modo ativo (`🔒 local` ↔ `☁️ servidor`).
 - **`VITE_SERVER_URL`:** URL base do backend (ex.: em `.env.local`). Vazio →
   mesma origem.
+- **`VITE_ALLOWED_HOSTS`:** hosts extras aceitos ao servir **via Vite** (`dev` ou
+  `vite preview`) atrás de um proxy/domínio público (o Vite bloqueia hosts
+  desconhecidos por padrão). Lista separada por vírgulas, ex.:
+  `VITE_ALLOWED_HOSTS=machado.limao.uk`. Irrelevante na produção recomendada
+  (uvicorn serve o `dist/`; veja `scripts/setup-prod.sh`).
 
 ### Cross-Origin Isolation
 

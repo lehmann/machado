@@ -68,6 +68,34 @@ The server **boots even without the converted model** (so you can iterate on the
 API/CEFR); `/health` then reports `ok:false` and `/translate` returns 503, which
 makes the frontend fall back to local — exactly the intended behavior.
 
+## Production (Ubuntu server)
+
+Two scripts provision and run a **single-origin** deployment — one `uvicorn`
+process serves both the API and the built SPA (with COOP/COEP), managed by
+systemd. They don't touch the dev workflow (`scripts/dev.sh`).
+
+```bash
+# from the repo root, as a user with sudo rights
+scripts/setup-prod.sh            # build SPA + venv + full deps + spaCy + NLLB→CT2 + systemd unit
+#   --cpu          run translation on CPU (no NVIDIA GPU)
+#   --skip-model   skip the ~5 GB NLLB conversion (do it later)
+#   --no-systemd   prepare everything but don't install the unit
+
+scripts/start-prod.sh            # enable + start now (survives reboots)
+scripts/start-prod.sh restart    # after a redeploy / rebuild
+scripts/start-prod.sh logs       # follow journalctl
+scripts/start-prod.sh status|stop|disable
+```
+
+`setup-prod.sh` is idempotent and installs a systemd unit (`machado` by default;
+override with `SERVICE_NAME`) that sets `MACHADO_STATIC_DIR=<repo>/dist`,
+`CT2_DEVICE`, and `CT2_COMPUTE`. Runtime vars can be overridden without
+regenerating the unit via an optional `server/.env.prod` (loaded as an
+`EnvironmentFile`). The app is then reachable at `http://<host>:8002/` — the SPA
+and the API share that origin, so `VITE_SERVER_URL` stays empty. On a GPU box,
+make sure the NVIDIA driver is installed and the service user can reach
+`/dev/nvidia*`.
+
 ## Point the frontend at it
 
 In dev the Vite app and this server are on different ports, so set the base URL:
@@ -89,6 +117,7 @@ Then enable **"Permitir processamento no servidor"** in the app settings.
 | `CT2_COMPUTE` | `int8_float16` (cuda) / `int8` (cpu) | Quantization |
 | `BEAM_SIZE` | `4` | Decoding beam width |
 | `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:4173` | CORS origins |
+| `MACHADO_STATIC_DIR` | *(unset)* | If set to the frontend build dir (`../dist`), the API also serves the SPA on the same origin, with the COOP/COEP headers the local engine needs. Unset in dev/CI (API-only). Used by the prod scripts. |
 | `MACHADO_FAKE_MT` | *(unset)* | **Tests only** — see below. Never set in production. |
 
 ## Tests

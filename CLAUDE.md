@@ -98,6 +98,8 @@ as translation/CEFR: **one shared contract, two providers.**
 
 ```bash
 scripts/dev.sh         # start ALL services (frontend + optional backend); Ctrl+C stops both
+scripts/setup-prod.sh  # PROD provision (Ubuntu): build + venv + deps + spaCy + NLLB→CT2 + systemd
+scripts/start-prod.sh  # PROD control: start|stop|restart|status|logs|disable the systemd unit
 npm run dev            # Vite dev server only (http://localhost:5173)
 npm run build          # production build → dist/
 npm test               # JS unit + integration
@@ -108,6 +110,14 @@ npm run test:server    # cd server && python -m pytest
 
 Server run/setup lives in `server/README.md`. Point the UI at a running server
 with `VITE_SERVER_URL` (e.g. in `.env.local`).
+
+- **Prod is single-origin.** `scripts/{setup,start}-prod.sh` run one `uvicorn`
+  that serves both the API and the built SPA. This is gated by the
+  `MACHADO_STATIC_DIR` env var (path to `dist/`): when set, `main.py` mounts the
+  static build at `/` (after the API routes) and adds the COOP/COEP headers the
+  local ONNX engine needs. **Unset in dev/CI**, so the API stays API-only and the
+  dev/test paths (and `scripts/dev.sh`) are unchanged. Don't hardwire static
+  serving — keep it env-gated.
 
 ## Testing notes
 

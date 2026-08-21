@@ -6,6 +6,8 @@ Contract (matches the frontend ServerProvider):
   POST /analyze   -> { text, lang }            => { parts }
   POST /grammar   -> { text, lang }            => { lang, source, tokens, relations }
 """
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -74,3 +76,23 @@ def grammar(req: GrammarRequest):
             detail=f"Grammar model unavailable for '{req.lang}' (install the spaCy model)",
         )
     return grammar_mod.analyze(req.text, req.lang)
+
+
+# ── Optional: serve the built SPA on the same origin (production) ──────────
+# Set MACHADO_STATIC_DIR=/path/to/dist to have this API also serve the frontend
+# build, with the COOP/COEP headers the local ONNX engine needs. Unset (dev/CI)
+# → this block is inert and the API behaves exactly as before. Registered after
+# the API routes so those keep precedence; the "/" mount is the catch-all.
+_STATIC_DIR = os.environ.get("MACHADO_STATIC_DIR")
+if _STATIC_DIR and os.path.isdir(_STATIC_DIR):
+    from fastapi.staticfiles import StaticFiles
+
+    @app.middleware("http")
+    async def _cross_origin_isolation(request, call_next):
+        response = await call_next(request)
+        # Required for SharedArrayBuffer / ONNX Runtime Web (local fallback).
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"
+        return response
+
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="spa")
