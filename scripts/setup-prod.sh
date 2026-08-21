@@ -109,6 +109,10 @@ if [ "$CONVERT_MODEL" = "1" ]; then
   if [ -d "$ROOT/server/models/nllb-200-distilled-1.3B-ct2" ]; then
     ok "NLLB model already converted — skipping."
   else
+    # torch is required to read the HF PyTorch weights during conversion only
+    # (CTranslate2 runtime doesn't use it). CPU wheel — conversion is CPU-bound.
+    info "Installing one-time conversion deps (torch, CPU)…"
+    "$PY" -m pip install -r "$ROOT/server/requirements-convert.txt"
     info "Converting NLLB-200 → CTranslate2 (~5 GB download, one-time)…"
     # ct2-transformers-converter lives in the venv; put it on PATH.
     PATH="$VENV/bin:$PATH" bash "$ROOT/server/scripts/convert_model.sh"
@@ -116,6 +120,7 @@ if [ "$CONVERT_MODEL" = "1" ]; then
   fi
 else
   warn "Skipping NLLB conversion (--skip-model). /translate stays 503 until you run:"
+  warn "  $PY -m pip install -r server/requirements-convert.txt   # torch (CPU), conversion only"
   warn "  PATH=\"$VENV/bin:\$PATH\" bash server/scripts/convert_model.sh"
 fi
 

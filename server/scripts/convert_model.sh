@@ -3,6 +3,9 @@
 # quantized to int8_float16 (fits comfortably in the RTX 3070's 8 GB VRAM).
 # Downloads ~5 GB of HF weights on first run; the CT2 output is ~1.3 GB.
 #
+# Requires torch to read the HF PyTorch weights (CPU is enough; runtime doesn't
+# need it):  pip install -r server/requirements-convert.txt
+#
 # Run from the repo root:  bash server/scripts/convert_model.sh
 set -euo pipefail
 

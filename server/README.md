@@ -53,6 +53,9 @@ python -m spacy download pt_core_news_sm
 python -m spacy download de_core_news_sm
 
 # Convert the NLLB model to CTranslate2 (int8_float16). One-time, ~5 GB download.
+# The converter reads the HF *PyTorch* weights, so it needs torch (CPU is enough;
+# runtime inference via CTranslate2 does NOT use torch — kept out of requirements.txt).
+pip install -r requirements-convert.txt
 # Run from the repo root:
 cd .. && bash server/scripts/convert_model.sh
 ```
