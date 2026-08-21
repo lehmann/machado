@@ -1,7 +1,71 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TranslatorEngine } from './engine/TranslatorEngine.js';
+import { describeToken, describeRelation } from './grammar/describe.js';
 
 const SERVER_BASE_URL = import.meta.env.VITE_SERVER_URL ?? '';
+
+// Split a sentence into clickable words + inert chunks (spaces/punctuation), each
+// carrying char offsets RELATIVE to the sentence — the same coordinate space the
+// grammar analysis uses, so words map to tokens by offset overlap.
+const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}­'’\-]*/gu;
+
+function segmentSentence(text) {
+  const segs = [];
+  let last = 0;
+  WORD_RE.lastIndex = 0;
+  let m;
+  while ((m = WORD_RE.exec(text)) !== null) {
+    if (m.index > last) segs.push({ text: text.slice(last, m.index), start: last, end: m.index, word: false });
+    segs.push({ text: m[0], start: m.index, end: m.index + m[0].length, word: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segs.push({ text: text.slice(last), start: last, end: text.length, word: false });
+  return segs;
+}
+
+// The (non-punct) token with the largest overlap with [start, end), or null.
+function findTokenAtOffset(tokens, start, end) {
+  let best = null;
+  let bestOverlap = 0;
+  for (const t of tokens ?? []) {
+    if (t.isPunct) continue;
+    const overlap = Math.min(end, t.end) - Math.max(start, t.start);
+    if (overlap > bestOverlap) { bestOverlap = overlap; best = t; }
+  }
+  return bestOverlap > 0 ? best : null;
+}
+
+// From the focus token, collect the other ends of every relation it takes part in
+// (for highlighting) plus the PT-BR phrases describing those relations.
+function relate(analysis, focusIdx) {
+  const related = [];
+  const phrases = [];
+  const seen = new Set();
+  for (const rel of analysis.relations ?? []) {
+    const deps = rel.deps ?? [];
+    const involvesFocus = rel.head === focusIdx || deps.includes(focusIdx);
+    if (!involvesFocus) continue;
+    const phrase = describeRelation(rel, analysis.tokens, focusIdx);
+    if (phrase) phrases.push(phrase);
+    const others = rel.head === focusIdx ? deps : [rel.head];
+    for (const j of others) {
+      if (j === focusIdx || seen.has(j)) continue;
+      seen.add(j);
+      related.push({ i: j, kind: rel.kind });
+    }
+  }
+  return { related, phrases };
+}
+
+// CSS class for a word segment given the active grammar analysis for its sentence.
+function wordClass(active, seg) {
+  if (!active?.analysis) return '';
+  const tok = findTokenAtOffset(active.analysis.tokens, seg.start, seg.end);
+  if (!tok) return '';
+  if (tok.i === active.focusIdx) return 'grammar-focus';
+  const rel = active.related.find((r) => r.i === tok.i);
+  return rel ? `grammar-related grammar-rel-${rel.kind}` : '';
+}
 
 const LANGS = {
   pt: { label: 'Português (Brasil)', flag: '🇧🇷', placeholder: 'Digite o texto em português...' },
@@ -21,6 +85,7 @@ export default function App() {
   const [target, setTarget] = useState('');
   const [targetParts, setTargetParts] = useState(null);
   const [tip, setTip] = useState(null); // { cefr, x, y }
+  const [grammar, setGrammar] = useState(null); // { sentenceIdx, analysis, focusIdx, focusToken, related, phrases, x, y, loading }
   const [from, setFrom] = useState('pt');
   const [to, setTo] = useState('de');
   const [modelState, setModelState] = useState({ status: 'idle', progress: 0, file: '' });
@@ -36,6 +101,9 @@ export default function App() {
   const debounceRef = useRef(null);
   const reqIdRef = useRef(0);
   const currentReqRef = useRef(0);
+  const grammarOpenRef = useRef(false); // mirror of `grammar` for stable callbacks
+
+  useEffect(() => { grammarOpenRef.current = !!grammar; }, [grammar]);
 
   useEffect(() => {
     const engine = new TranslatorEngine(
@@ -69,6 +137,7 @@ export default function App() {
           if (data.id === currentReqRef.current) {
             setTarget(data.text);
             setTargetParts(data.parts ?? null);
+            setGrammar(null); // offsets/sentences changed
             setIsTranslating(false);
             setModelState(prev => prev.status !== 'ready' ? { status: 'ready', progress: 100, file: '' } : prev);
           }
@@ -136,6 +205,7 @@ export default function App() {
     setSource(prevTarget);
     setTarget(prevSource);
     setTargetParts(null);
+    setGrammar(null);
     scheduleTranslate(prevTarget, `${newFrom}-${newTo}`);
   };
 
@@ -154,14 +224,69 @@ export default function App() {
     setSource('');
     setTarget('');
     setTargetParts(null);
+    setGrammar(null);
   };
 
   const showTip = useCallback((e, cefr) => {
-    if (!cefr) return;
+    if (!cefr || grammarOpenRef.current) return; // grammar tooltip takes precedence
     const r = e.currentTarget.getBoundingClientRect();
     setTip({ cefr, x: r.left, y: r.bottom });
   }, []);
   const hideTip = useCallback(() => setTip(null), []);
+
+  // Analyze the clicked/selected span of a sentence and open the grammar tooltip.
+  const handleWordClick = useCallback(async (sentenceIdx, sentenceText, start, end, rect) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    setTip(null);
+    const x = rect.left;
+    const y = rect.bottom;
+    setGrammar({ sentenceIdx, x, y, loading: true, analysis: null, focusIdx: -1, related: [], phrases: [] });
+    try {
+      const analysis = await engine.analyzeGrammar({ text: sentenceText, lang: to });
+      const focus = findTokenAtOffset(analysis.tokens, start, end);
+      if (!focus) { setGrammar(null); return; }
+      const { related, phrases } = relate(analysis, focus.i);
+      setGrammar({ sentenceIdx, x, y, loading: false, analysis, focusIdx: focus.i, focusToken: focus, related, phrases });
+    } catch {
+      setGrammar(null);
+    }
+  }, [to]);
+
+  // A drag-selection within a single sentence behaves like clicking its first
+  // content word (focus = first token overlapping the selected range).
+  const handleOutputMouseUp = useCallback(() => {
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return; // plain click → word onClick handles it
+    const range = sel.getRangeAt(0);
+    const startEl = (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)?.closest('[data-start]');
+    const endEl = (range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement)?.closest('[data-start]');
+    if (!startEl || !endEl) return;
+    const sentEl = startEl.closest('[data-sidx]');
+    if (!sentEl || sentEl !== endEl.closest('[data-sidx]')) return; // ignore cross-sentence selections
+    const sentenceIdx = Number(sentEl.dataset.sidx);
+    const part = targetParts?.[sentenceIdx];
+    if (!part || part.type !== 'sentence') return;
+    const selStart = Number(startEl.dataset.start);
+    const selEnd = Number(endEl.dataset.end);
+    handleWordClick(sentenceIdx, part.text, selStart, selEnd, range.getBoundingClientRect());
+  }, [targetParts, handleWordClick]);
+
+  // Dismiss the grammar tooltip on Esc or a click outside a word/the tooltip.
+  useEffect(() => {
+    if (!grammar) return;
+    const onKey = (e) => { if (e.key === 'Escape') setGrammar(null); };
+    const onDown = (e) => {
+      if (e.target.closest?.('.word') || e.target.closest?.('.grammar-tip')) return;
+      setGrammar(null);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [grammar]);
 
   const handleSaveToken = () => {
     const t = tokenDraft.trim();
@@ -258,10 +383,14 @@ export default function App() {
           modelState={modelState}
           onCopy={handleCopy}
           copied={copied}
+          grammar={grammar}
+          onWordClick={handleWordClick}
+          onOutputMouseUp={handleOutputMouseUp}
         />
       </main>
 
-      {tip && <CefrTooltip tip={tip} />}
+      {tip && !grammar && <CefrTooltip tip={tip} />}
+      {grammar && <GrammarTooltip grammar={grammar} onClose={() => setGrammar(null)} />}
 
       <footer className="app-footer">
         <span>
@@ -279,7 +408,7 @@ export default function App() {
   );
 }
 
-function Panel({ lang, value, parts, onSentenceEnter, onSentenceLeave, onChange, editable, charCount, maxChars, onClear, isTranslating, modelState, onCopy, copied }) {
+function Panel({ lang, value, parts, onSentenceEnter, onSentenceLeave, onChange, editable, charCount, maxChars, onClear, isTranslating, modelState, onCopy, copied, grammar, onWordClick, onOutputMouseUp }) {
   const info = LANGS[lang];
   const isModelLoading = modelState?.status === 'loading';
   const busy = isTranslating || isModelLoading;
@@ -305,11 +434,27 @@ function Panel({ lang, value, parts, onSentenceEnter, onSentenceLeave, onChange,
       p.type === 'sentence' ? (
         <span
           key={i}
+          data-sidx={i}
           className={`sentence ${p.cefr ? `cefr-${p.cefr.level}` : ''}`}
           onMouseEnter={p.cefr ? (e) => onSentenceEnter(e, p.cefr) : undefined}
           onMouseLeave={p.cefr ? onSentenceLeave : undefined}
         >
-          {p.text}
+          {segmentSentence(p.text).map((seg, j) => {
+            const active = grammar?.sentenceIdx === i ? grammar : null;
+            return seg.word ? (
+              <span
+                key={j}
+                className={`word ${wordClass(active, seg)}`.trim()}
+                data-start={seg.start}
+                data-end={seg.end}
+                onClick={(e) => onWordClick?.(i, p.text, seg.start, seg.end, e.currentTarget.getBoundingClientRect())}
+              >
+                {seg.text}
+              </span>
+            ) : (
+              <span key={j} data-start={seg.start} data-end={seg.end}>{seg.text}</span>
+            );
+          })}
         </span>
       ) : (
         <span key={i}>{p.text}</span>
@@ -353,7 +498,7 @@ function Panel({ lang, value, parts, onSentenceEnter, onSentenceLeave, onChange,
             spellCheck
           />
         ) : (
-          <div className={`text-area output ${busy ? 'is-loading' : ''}`}>
+          <div className={`text-area output ${busy ? 'is-loading' : ''}`} onMouseUp={onOutputMouseUp}>
             {outputContent}
           </div>
         )}
@@ -380,6 +525,49 @@ function CefrTooltip({ tip }) {
       <ul className="cefr-tip-factors">
         {cefr.factors.map((f, i) => <li key={i}>{f}</li>)}
       </ul>
+    </div>
+  );
+}
+
+function GrammarTooltip({ grammar, onClose }) {
+  const { x, y, loading, analysis, focusToken, phrases } = grammar;
+  const left = Math.min(x, window.innerWidth - 320);
+  const desc = focusToken ? describeToken(focusToken) : null;
+  const isServer = analysis?.source === 'server';
+
+  return (
+    <div className="grammar-tip" style={{ left: Math.max(8, left), top: y + 8 }} role="dialog">
+      <div className="grammar-tip-head">
+        <span className="grammar-tip-word">{focusToken?.text ?? '…'}</span>
+        <span className={`grammar-source ${isServer ? 'grammar-source-server' : 'grammar-source-local'}`}
+          title={isServer ? 'Análise do servidor (spaCy)' : 'Análise local, aproximada'}>
+          {isServer ? '☁️ servidor' : '≈ local'}
+        </span>
+        <button className="btn-ghost btn-sm grammar-tip-close" onClick={onClose} aria-label="Fechar">✕</button>
+      </div>
+
+      {loading ? (
+        <div className="grammar-tip-loading">
+          <span className="dot-pulse" /> Analisando…
+        </div>
+      ) : (
+        <>
+          <div className="grammar-tip-pos">
+            <strong>{desc?.title}</strong>
+            {desc?.detail && <span className="grammar-tip-morph"> · {desc.detail}</span>}
+          </div>
+          {phrases?.length > 0 && (
+            <ul className="grammar-tip-relations">
+              {phrases.map((ph, i) => <li key={i}>{ph}</li>)}
+            </ul>
+          )}
+          <div className="grammar-legend">
+            <span className="grammar-legend-item"><span className="swatch grammar-focus" /> palavra</span>
+            <span className="grammar-legend-item"><span className="swatch grammar-rel-agreement" /> concordância</span>
+            <span className="grammar-legend-item"><span className="swatch grammar-rel-government" /> regência</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

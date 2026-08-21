@@ -18,3 +18,24 @@ def get_nlp(lang: str):
         return spacy.load(model, disable=["ner", "lemmatizer", "attribute_ruler"])
     except Exception:
         return None
+
+
+@lru_cache(maxsize=None)
+def get_nlp_full(lang: str):
+    """Full pipeline for the grammar feature: keeps the components that populate
+    token.morph and token.lemma_ (morphologizer / attribute_ruler / lemmatizer) in
+    addition to the parser. Only NER is dropped. Returns None if the model isn't
+    installed, so the /grammar route can report the capability as unavailable.
+    """
+    model = SPACY_MODELS.get(lang)
+    if not model:
+        return None
+    try:
+        import spacy
+        return spacy.load(model, disable=["ner"])
+    except Exception:
+        return None
+
+
+def grammar_available(lang: str) -> bool:
+    return get_nlp_full(lang) is not None

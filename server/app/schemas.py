@@ -16,6 +16,12 @@ class AnalyzeRequest(BaseModel):
     lang: Lang
 
 
+class GrammarRequest(BaseModel):
+    # One sentence at a time (clicked in the UI); keep it small.
+    text: str = Field(..., max_length=5000)
+    lang: Lang
+
+
 class TranslateResponse(BaseModel):
     text: str
     parts: List[Dict[str, Any]]
@@ -25,3 +31,10 @@ class TranslateResponse(BaseModel):
 
 class AnalyzeResponse(BaseModel):
     parts: List[Dict[str, Any]]
+
+
+class GrammarResponse(BaseModel):
+    lang: str
+    source: str
+    tokens: List[Dict[str, Any]]
+    relations: List[Dict[str, Any]]

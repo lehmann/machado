@@ -70,6 +70,31 @@ test('TranslatorEngine routes to the live server when consent + reachable', asyn
   assert.equal(engine.local.calls.length, 0);
 });
 
+test('analyzeGrammar falls back to local when the server lacks spaCy', async (t) => {
+  if (!server) return t.skip(SKIP_MSG);
+  // The fake-MT server advertises grammar:{pt:false,de:false} (no spaCy in CI),
+  // so the engine must route grammar to the local heuristic and still honor the
+  // shared contract.
+  // Fake the translation LocalProvider (the real one needs a browser Worker);
+  // the grammar providers use their real default factories.
+  const engine = new TranslatorEngine(
+    {},
+    { serverBaseUrl: server.url, hasToken: true, consent: true },
+    { createLocal: () => ({ translate() {}, setToken() {}, clearCache() {}, dispose() {}, async health() { return true; } }) }
+  );
+  const analysis = await engine.analyzeGrammar({ text: 'Der große Hund schläft.', lang: 'de' });
+
+  assert.equal(analysis.source, 'local');
+  assert.equal(analysis.lang, 'de');
+  assert.ok(Array.isArray(analysis.tokens) && analysis.tokens.length > 0);
+  assert.ok(Array.isArray(analysis.relations));
+  // Offsets are relative to the analysed sentence.
+  const text = 'Der große Hund schläft.';
+  for (const tok of analysis.tokens) {
+    assert.equal(text.slice(tok.start, tok.end), tok.text);
+  }
+});
+
 test('TranslatorEngine falls back to local when the server URL is dead', async (t) => {
   if (!server) return t.skip(SKIP_MSG);
   const engine = new TranslatorEngine(

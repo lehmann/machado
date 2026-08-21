@@ -2,9 +2,10 @@
 
 Full server-side mode: **direct PT↔DE translation** (NLLB-200-distilled-1.3B via
 CTranslate2, int8, on GPU) + **CEFR analysis** (frequency lists + spaCy
-dependency parse). Runs entirely on your own hardware — data never leaves your
-infrastructure. The browser uses this engine only when the user consents and the
-server is reachable; otherwise it falls back to the full client-side engine.
+dependency parse) + **grammar analysis** (full spaCy pipeline). Runs entirely on
+your own hardware — data never leaves your infrastructure. The browser uses this
+engine only when the user consents and the server is reachable; otherwise it
+falls back to the full client-side engine.
 
 Emits the exact same `parts[]` / `cefr` shape the browser worker produces, so
 the UI is engine-agnostic. For the project overview and the frontend, see
@@ -17,9 +18,28 @@ the UI is engine-agnostic. For the project overview and the frontend, see
 | GET | `/health` | — | `{ ok, models }` |
 | POST | `/translate` | `{ text, source, target }` | `{ text, parts, engine, model }` |
 | POST | `/analyze` | `{ text, lang }` | `{ parts }` |
+| POST | `/grammar` | `{ text, lang }` | `{ lang, source, tokens, relations }` |
 
 `source`/`target`/`lang` are `"pt"` or `"de"`. `parts[]` entries are either
 `{type:"gap", text}` or `{type:"sentence", text, cefr}`.
+
+### Grammar
+
+`/health.models.grammar` advertises spaCy availability per language
+(`{ "pt": bool, "de": bool }`) so the frontend can route by capability. `/grammar`
+analyzes **one sentence** and returns the shared grammar contract:
+
+- `tokens[]`: `{ i, start, end, text, pos, lemma, morph:{Gender,Case,Number,Person,…}, isPunct }`
+  (offsets relative to the sentence).
+- `relations[]`: `{ type, kind:"agreement"|"government"|"dependency", head, deps:[…], features:[…] }`.
+
+It returns **503** when the spaCy model for `lang` isn't installed — deterministic
+in CI, where the frontend then uses its local heuristic instead. PT-BR phrasing is
+generated in the UI (`src/grammar/describe.js`), so the server emits only structured
+data. Dependency labels differ by language (PT uses Universal Dependencies, DE the
+TIGER scheme); `app/grammar.py` handles both. Because it needs `token.morph`/
+`token.lemma_`, grammar loads a **fuller pipeline** than CEFR (`get_nlp_full` keeps
+the morphologizer/attribute_ruler/lemmatizer, dropping only NER).
 
 ## Setup
 
