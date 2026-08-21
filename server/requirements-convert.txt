@@ -1,0 +1,11 @@
+# One-time dependencies to CONVERT NLLB-200 -> CTranslate2
+# (server/scripts/convert_model.sh). The converter loads the HuggingFace
+# *PyTorch* weights through transformers, which requires a DL framework — hence
+# torch. This is deliberately kept OUT of requirements.txt because CTranslate2
+# runtime inference does NOT use torch (see server/app/translation.py).
+#
+# CPU torch is enough: the conversion reads/quantizes weights on the CPU, it
+# never touches the GPU. The CPU wheel index below keeps this ~200 MB instead of
+# pulling a multi-GB CUDA build.
+--index-url https://download.pytorch.org/whl/cpu
+torch
