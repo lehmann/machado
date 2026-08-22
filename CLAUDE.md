@@ -33,19 +33,30 @@ automatically at translate time:
   user's token is otherwise stored only in browser `localStorage`.
 - **Self-hosted models (prod) vs HF Hub (dev).** The local engine's OPUS-MT ONNX
   models come from the HuggingFace Hub by default (needs a token). A **production**
-  build self-hosts them from its own origin instead, so **no token is needed
-  offline** — gated by the Vite `define` `__MODELS_BASE__` (from `VITE_MODELS_BASE`,
-  set to `/models` by `setup-prod.sh`; empty in dev/preview/CI → HF+token, unchanged).
-  When set: `translator.worker.js` points `env.remoteHost`/`remotePathTemplate` at
-  same-origin `/models/{model}/` (the token-inject fetch hook only rewrites HF URLs,
-  so our origin never gets an `Authorization` header); `TranslatorEngine`'s
-  `modelsSelfHosted` option skips the `onNeedToken` gate; and the UI hides the token
+  build serves them without a token — gated by the Vite `define` `__MODELS_BASE__`
+  (from `VITE_MODELS_BASE`; empty in dev/preview/CI → HF+token, unchanged). It takes
+  two shapes, both handled in `translator.worker.js` by setting `env.remoteHost`/
+  `remotePathTemplate` (files always laid out as `${base}/{model}/<file>`):
+  - a **same-origin path** (`/models`, set by `setup-prod.sh`) → our own uvicorn
+    serves them; `main.py` mounts `web-models/` at `/models` when
+    `MACHADO_WEB_MODELS_DIR` is set (before the SPA catch-all);
+  - an **absolute URL** (e.g. a Cloudflare R2 CDN, `https://models.…/`) → offloads
+    IO from our origin. `setup-prod.sh` auto-detects a preset http(s) `VITE_MODELS_BASE`
+    and skips the local download/mount.
+
+  Either way: the token-inject fetch hook only rewrites HF URLs, so neither our
+  origin nor the CDN gets an `Authorization` header; `TranslatorEngine`'s
+  `modelsSelfHosted` option skips the `onNeedToken` gate; the UI hides the token
   prompts. `scripts/fetch-models.mjs` downloads the models into `web-models/` (git-
-  ignored, kept OUT of `dist/` so `npm run build` won't wipe ~474 MB); `main.py`
-  mounts that dir at `/models` when `MACHADO_WEB_MODELS_DIR` is set (before the SPA
-  catch-all). Keep dev on the Hub — don't self-host in dev (would make Vite serve
-  474 MB). The `sw.js` same-origin SWR **excludes `/models/`** (Transformers.js
-  caches weights itself); don't re-add it or every visit re-downloads them.
+  ignored, OUT of `dist/` so `npm run build` won't wipe ~474 MB);
+  `scripts/upload-models-r2.sh` pushes that dir to R2 via **rclone** over the S3
+  API (no Node dep — wrangler needs Node 22+; needs an R2 API token) (CORS via
+  `scripts/r2-cors.json`).
+  Keep dev on the Hub — don't self-host in dev (Vite would serve 474 MB). The
+  `sw.js` same-origin SWR **excludes `/models/`** (Transformers.js caches weights
+  itself); don't re-add it or every visit re-downloads them. A CDN is cross-origin,
+  so it needs CORS headers, and it's a third party that sees IPs/model metadata
+  (no user text) — consistent with the ort-web `.wasm` already loaded from jsdelivr.
 - **`MACHADO_FAKE_MT` is a test-only seam** (deterministic `"DE: <text>"`
   stand-in). Never enable it in production, and keep it out of any prod path.
 - **Privacy promise is user-visible.** The badge/footer must reflect the active

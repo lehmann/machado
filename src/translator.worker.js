@@ -12,14 +12,22 @@ env.useBrowserCache = true; // TF.js caches weights for offline, whatever the so
 
 // Where model files come from. Empty (dev/preview) → the default remote host, the
 // HuggingFace Hub, with the token injected below. A production build sets
-// __MODELS_BASE__ = '/models' (Vite define via VITE_MODELS_BASE; see setup-prod.sh)
-// so the models are served from the app's OWN origin at `${origin}/models/{model}/…`
-// — no HuggingFace token needed offline. The token-injection hook below only
-// rewrites HF URLs, so our own origin never receives an Authorization header.
+// __MODELS_BASE__ (Vite define via VITE_MODELS_BASE; see setup-prod.sh) to either:
+//   • a same-origin PATH (e.g. '/models') → the app's own uvicorn serves them; or
+//   • an absolute URL (e.g. 'https://models.example.com/') → a CDN (Cloudflare R2)
+//     serves them, offloading IO from our origin.
+// Either way NO HuggingFace token is needed: the token-injection hook below only
+// rewrites HF URLs, so neither our origin nor the CDN receives an Authorization
+// header. Files are laid out as `${base}/{model}/<file>` in both cases.
 const MODELS_BASE = (typeof __MODELS_BASE__ === 'string') ? __MODELS_BASE__ : '';
 if (MODELS_BASE) {
-  env.remoteHost = self.location.origin;
-  env.remotePathTemplate = `${MODELS_BASE.replace(/^\/|\/$/g, '')}/{model}/`;
+  if (/^https?:\/\//i.test(MODELS_BASE)) {
+    env.remoteHost = MODELS_BASE.replace(/\/$/, '');
+    env.remotePathTemplate = '{model}/';
+  } else {
+    env.remoteHost = self.location.origin;
+    env.remotePathTemplate = `${MODELS_BASE.replace(/^\/|\/$/g, '')}/{model}/`;
+  }
 }
 
 // Point ort-web at its .wasm binaries. Vite pre-bundles the JS into /.vite/deps/

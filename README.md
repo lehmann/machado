@@ -126,6 +126,13 @@ informe-o em **⚙ Configurações**. Detalhes em [`src/README.md`](src/README.m
 > `/models`), então o modo local funciona offline sem nenhum token — e sem
 > contatar terceiros. Use `--skip-web-models` para manter o download via HF (aí o
 > token volta a ser necessário).
+>
+> **Descarregar o IO para um CDN (opcional).** Para não servir ~474 MB da própria
+> máquina, hospede os modelos num bucket **Cloudflare R2** (free tier: 10 GB,
+> egress zero): `scripts/upload-models-r2.sh <bucket>` envia `web-models/`, aí
+> basta ligar um domínio custom ao bucket, aplicar `scripts/r2-cors.json` (com a
+> sua origem) e buildar com `VITE_MODELS_BASE=https://<domínio>/`. Passo a passo
+> em [`server/README.md`](server/README.md#produção-ubuntu-server).
 
 ## Modo servidor (opcional)
 

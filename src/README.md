@@ -163,11 +163,19 @@ TeP 2.0 (PT), via os tesauros MyThes do LibreOffice (licença BSD). Gerado por
   engine dispensa o gate.
 - **`VITE_MODELS_BASE`:** de onde a engine local busca os modelos ONNX. Vazio
   (padrão, incl. dev/preview) → HF Hub (precisa de token). Um build de produção
-  seta `/models` (via `scripts/setup-prod.sh`), fazendo o navegador buscar os
-  modelos na própria origem (`__MODELS_BASE__` no `translator.worker.js` aponta
-  `env.remoteHost`/`remotePathTemplate` para lá) — sem token e sem terceiros. Os
-  arquivos são baixados por `scripts/fetch-models.mjs` (veja Scripts) e servidos
-  pelo uvicorn em `/models` quando `MACHADO_WEB_MODELS_DIR` está setado.
+  aponta `__MODELS_BASE__` no `translator.worker.js` (`env.remoteHost`/
+  `remotePathTemplate`) para uma de duas origens, ambas **sem token e sem HF**:
+  - **caminho relativo** (ex.: `/models`, o padrão do `scripts/setup-prod.sh`) →
+    o próprio uvicorn serve os modelos na mesma origem. Os arquivos são baixados
+    por `scripts/fetch-models.mjs` (veja Scripts) e servidos em `/models` quando
+    `MACHADO_WEB_MODELS_DIR` está setado;
+  - **URL absoluta** (ex.: `https://models.limao.uk/`) → um CDN
+    (Cloudflare R2) serve os modelos, descarregando o IO da nossa origem. Envie
+    `web-models/` com `scripts/upload-models-r2.sh` e configure o bucket
+    (domínio custom + CORS via `scripts/r2-cors.json`). O CDN é um terceiro que
+    vê o IP do usuário e quais modelos ele baixa (nenhum texto trafega) — mesmo
+    perfil do `.wasm` do ort-web já carregado do jsdelivr. O hook de token só
+    reescreve URLs do HF, então nem a origem nem o CDN recebem `Authorization`.
 - **Consentimento de servidor:** persistido em `localStorage` (`server_consent`).
   Sem ele, ou offline, tudo roda localmente. O badge de privacidade e o rodapé
   refletem o modo ativo (`🔒 local` ↔ `☁️ servidor`).

@@ -99,6 +99,27 @@ this origin — **no HuggingFace token needed offline, and no third party in the
 local path**. Pass `--skip-web-models` to keep the browser downloading from the
 HF Hub (which requires the user to configure a token).
 
+**Offload model IO to a CDN (optional).** To avoid serving ~474 MB from your box,
+host the models on a **Cloudflare R2** bucket (free tier: 10 GB, zero egress) and
+point the app at it:
+
+```bash
+node scripts/fetch-models.mjs                 # populate web-models/
+# upload via rclone over R2's S3 API (no Node dep — wrangler needs Node 22+).
+# Needs an R2 API token; export R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_ACCOUNT_ID
+scripts/upload-models-r2.sh machado-models    # push to R2 (see the script header)
+# → bind a custom domain to the bucket + apply scripts/r2-cors.json (set your origin)
+VITE_MODELS_BASE=https://models.limao.uk/ scripts/setup-prod.sh   # build against the CDN
+```
+
+`setup-prod.sh` detects an absolute `VITE_MODELS_BASE` and skips the local
+download/mount. The browser then loads models from R2's CDN (cached at the edge
+and in the browser), so your origin serves ~zero model bytes. A CDN is a third
+party that sees the user's IP and which models they fetch (no text is ever sent);
+this mirrors the ort-web `.wasm` already loaded from jsdelivr. Because it's
+cross-origin, the bucket must return CORS headers for your origin — hence
+`scripts/r2-cors.json`.
+
 `setup-prod.sh` is idempotent and installs a systemd unit (`machado` by default;
 override with `SERVICE_NAME`) that sets `MACHADO_STATIC_DIR=<repo>/dist`,
 `MACHADO_WEB_MODELS_DIR=<repo>/web-models` (unless `--skip-web-models`),

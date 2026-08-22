@@ -1,0 +1,8 @@
+[
+  {
+    "AllowedOrigins": ["https://machado.limao.uk"],
+    "AllowedMethods": ["GET", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "MaxAgeSeconds": 86400
+  }
+]

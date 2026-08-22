@@ -79,13 +79,22 @@ python3 -c 'import venv' >/dev/null 2>&1 || \
   die "python3 venv module missing — run: sudo apt-get install -y python3-venv"
 ok "node $(node -v), $(python3 --version)"
 
-# ── 1. local-engine ONNX models (self-hosted) ─────────────────────
-# Download the models the in-browser translator uses into web-models/, so the
-# app serves them from its own origin and NO HuggingFace token is needed offline.
-# Done BEFORE the build so VITE_MODELS_BASE only points at /models when the files
-# actually exist. With --skip-web-models the browser falls back to the HF Hub
-# (requiring a token), exactly as before.
-if [ "$FETCH_WEB_MODELS" = "1" ]; then
+# ── 1. local-engine ONNX models ───────────────────────────────────
+# The browser fetches its translation models from one of three places, chosen by
+# VITE_MODELS_BASE (baked into the build; NO HuggingFace token needed for the
+# first two):
+#   • a CDN (absolute URL, e.g. Cloudflare R2) — set VITE_MODELS_BASE in the env
+#     before running this; we skip the local download/mount and just build with it;
+#   • this origin (default) — we download the models into web-models/ and mount
+#     them at /models (see step 6 + server/app/main.py);
+#   • the HuggingFace Hub (--skip-web-models) — the user must configure a token.
+# Done BEFORE the build so VITE_MODELS_BASE reflects reality at bake time.
+if [ -n "${VITE_MODELS_BASE:-}" ] && printf '%s' "$VITE_MODELS_BASE" | grep -qiE '^https?://'; then
+  FETCH_WEB_MODELS=0   # a CDN serves the models — nothing to self-host or mount
+  export VITE_MODELS_BASE
+  ok "Using CDN for models: $VITE_MODELS_BASE (no token, no server IO for models)."
+  info "Populate it once with:  scripts/upload-models-r2.sh <bucket>  (after fetch-models.mjs)"
+elif [ "$FETCH_WEB_MODELS" = "1" ]; then
   info "Downloading local-engine ONNX models → web-models/ (~474 MB, one-time)…"
   node "$ROOT/scripts/fetch-models.mjs" --out "$WEB_MODELS_DIR"
   export VITE_MODELS_BASE="/models"
