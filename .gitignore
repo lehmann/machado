@@ -4,3 +4,4 @@
 /.venv/
 /dist/
 /node_modules/
+/web-models/

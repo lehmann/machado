@@ -95,4 +95,13 @@ if _STATIC_DIR and os.path.isdir(_STATIC_DIR):
         response.headers["Cross-Origin-Embedder-Policy"] = "credentialless"
         return response
 
+    # Optional: self-host the local-engine ONNX models so the browser fetches
+    # them from our own origin (no HuggingFace token needed offline). Kept OUT of
+    # the SPA dir so `npm run build` doesn't wipe the ~474 MB. The build must set
+    # VITE_MODELS_BASE=/models so the worker points here (see fetch-models.mjs).
+    # Mounted BEFORE "/" so it takes precedence over the SPA catch-all.
+    _WEB_MODELS_DIR = os.environ.get("MACHADO_WEB_MODELS_DIR")
+    if _WEB_MODELS_DIR and os.path.isdir(_WEB_MODELS_DIR):
+        app.mount("/models", StaticFiles(directory=_WEB_MODELS_DIR), name="models")
+
     app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="spa")

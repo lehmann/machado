@@ -54,6 +54,9 @@ conjugação do verbo. Como a tradução/CEFR, a análise tem **um contrato úni
 ou spaCy no servidor (badge `☁️ servidor`), com o mesmo fraseado PT-BR gerado na
 UI (`src/grammar/describe.js`). O roteamento é por capacidade: o servidor só é
 usado se `/health` anuncia `models.grammar` para o idioma; senão, cai no local.
+O mesmo tooltip sugere **1–2 sinônimos** quando faz sentido (palavras de classe
+aberta com correspondência confiável), a partir de um tesauro aberto empacotado
+(`src/grammar/synonyms.js`) — busca feita na própria UI, idêntica nos dois modos.
 
 ## Estrutura do repositório
 
@@ -71,6 +74,8 @@ usado se `/health` anuncia `models.grammar` para o idioma; senão, cai no local.
 ├── scripts/start-prod.sh   # controla o serviço systemd de produção
 ├── scripts/build-freq.mjs  # gerador one-time das listas de frequência
 ├── scripts/build-lexicon.mjs # gerador do léxico de gênero alemão (local)
+├── scripts/build-synonyms.mjs # gerador dos tesauros de sinônimos (DE + PT)
+├── scripts/fetch-models.mjs # baixa os modelos ONNX p/ auto-hospedar em produção
 ├── test/                   # testes JS (unit + integração UI↔servidor)
 ├── .github/workflows/      # CI: testes a cada push
 ├── vite.config.js
@@ -115,6 +120,12 @@ O modo local baixa modelos do HuggingFace Hub na primeira tradução (~150 MB po
 sentido). O Hub exige autenticação: crie um token gratuito (somente leitura) em
 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) e
 informe-o em **⚙ Configurações**. Detalhes em [`src/README.md`](src/README.md).
+
+> **Em produção não é preciso token.** O `setup-prod.sh` baixa os modelos com
+> `scripts/fetch-models.mjs` e o servidor os serve da própria origem (em
+> `/models`), então o modo local funciona offline sem nenhum token — e sem
+> contatar terceiros. Use `--skip-web-models` para manter o download via HF (aí o
+> token volta a ser necessário).
 
 ## Modo servidor (opcional)
 
@@ -174,6 +185,8 @@ fica desativado para não conflitar com o HMR do Vite.
 ## Privacidade
 
 - **Padrão local:** nenhum texto sai do navegador; os modelos rodam via WASM/ONNX.
+  Em produção os pesos são servidos pela própria origem do app (auto-hospedados),
+  então nem os modelos passam por terceiros; em dev/preview eles vêm do HF Hub.
 - **Modo servidor:** só com consentimento explícito, e o servidor é seu — os
   dados não deixam sua infraestrutura.
 - **Token HuggingFace:** guardado apenas no `localStorage` do navegador; nunca é

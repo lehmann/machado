@@ -24,12 +24,15 @@ src/
 │   └── ServerProvider.js    # fala HTTP com o backend
 ├── grammar/
 │   ├── describe.js          # ÚNICA fonte de fraseado PT-BR (token + relação)
+│   ├── synonyms.js          # sugestão de sinônimos (UI-side, lazy, os dois modos)
 │   ├── heuristic.js         # analyzeLocal(text, lang) — regras + léxico
 │   ├── LocalGrammarProvider.js  # provider local (heurística)
 │   ├── ServerGrammarProvider.js # provider servidor (POST /grammar)
 │   └── data/
 │       ├── closed-class.js  # tabelas de artigos/pronomes/preposições DE+PT
-│       └── de-gender.js     # gênero de substantivos alemães (gerado, compacto)
+│       ├── de-gender.js     # gênero de substantivos alemães (gerado, compacto)
+│       ├── synonyms-de.js   # tesauro DE (gerado, chunk lazy)
+│       └── synonyms-pt.js   # tesauro PT (gerado, chunk lazy)
 └── data/
     ├── freq-pt.js        # listas de frequência (geradas) — usadas pelo CEFR
     └── freq-de.js        #   (fonte única, reaproveitadas pelo servidor)
@@ -137,12 +140,34 @@ o mesmo padrão da tradução: **um contrato, dois provedores**.
 O léxico de gênero (`data/de-gender.js`) é gerado por `scripts/build-lexicon.mjs`
 (veja Scripts).
 
+### Sinônimos (`synonyms.js`)
+
+O mesmo tooltip sugere **1–2 sinônimos** quando faz sentido. `suggestSynonyms(token,
+lang)` (assíncrono) roda **só na UI** e serve os dois modos: chaveia pelo `lemma`
+do token (ou, quando o heurístico local não fornece, pelo texto) + a classe, e
+consulta um tesauro aberto empacotado (`data/synonyms-{de,pt}.js`, importados
+sob demanda como chunks separados). O servidor não muda — emite só o contrato; a
+sugestão é derivada aqui, idêntica em ambos (o modo servidor é melhor por dar
+`lemma` real). Só sugere para classe aberta (subst./verbo/adj./advérbio) e quando
+há correspondência confiável; senão, nada. Fonte/licença: OpenThesaurus (DE) e
+TeP 2.0 (PT), via os tesauros MyThes do LibreOffice (licença BSD). Gerado por
+`scripts/build-synonyms.mjs` (veja Scripts).
+
 ## Configuração e privacidade
 
-- **Token HuggingFace:** necessário no modo local para baixar modelos. Guardado
-  só no `localStorage`; nunca enviado a servidores nossos. Em dev pode ser
-  injetado a partir do arquivo `huggingface.token` (via `define` do Vite);
-  builds de produção recebem string vazia.
+- **Token HuggingFace:** necessário no modo local para baixar modelos **do HF
+  Hub**. Guardado só no `localStorage`; nunca enviado a servidores nossos. Em dev
+  pode ser injetado a partir do arquivo `huggingface.token` (via `define` do Vite);
+  builds de produção recebem string vazia. **Em produção com modelos auto-hospedados
+  (`VITE_MODELS_BASE`, abaixo) o token não é necessário** — a UI esconde o campo e o
+  engine dispensa o gate.
+- **`VITE_MODELS_BASE`:** de onde a engine local busca os modelos ONNX. Vazio
+  (padrão, incl. dev/preview) → HF Hub (precisa de token). Um build de produção
+  seta `/models` (via `scripts/setup-prod.sh`), fazendo o navegador buscar os
+  modelos na própria origem (`__MODELS_BASE__` no `translator.worker.js` aponta
+  `env.remoteHost`/`remotePathTemplate` para lá) — sem token e sem terceiros. Os
+  arquivos são baixados por `scripts/fetch-models.mjs` (veja Scripts) e servidos
+  pelo uvicorn em `/models` quando `MACHADO_WEB_MODELS_DIR` está setado.
 - **Consentimento de servidor:** persistido em `localStorage` (`server_consent`).
   Sem ele, ou offline, tudo roda localmente. O badge de privacidade e o rodapé
   refletem o modo ativo (`🔒 local` ↔ `☁️ servidor`).
@@ -173,4 +198,6 @@ Regenerar as listas de frequência (raro, one-time):
 ```bash
 node scripts/build-freq.mjs      # baixa OpenSubtitles freq lists → src/data/freq-*.js
 node scripts/build-lexicon.mjs   # gera src/grammar/data/de-gender.js (gênero DE)
+node scripts/build-synonyms.mjs  # gera src/grammar/data/synonyms-{de,pt}.js (tesauros)
+node scripts/fetch-models.mjs    # baixa os modelos ONNX → web-models/ (auto-hospedar em prod)
 ```

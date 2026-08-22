@@ -1,8 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TranslatorEngine } from './engine/TranslatorEngine.js';
 import { describeToken, describeRelation } from './grammar/describe.js';
+import { suggestSynonyms } from './grammar/synonyms.js';
 
 const SERVER_BASE_URL = import.meta.env.VITE_SERVER_URL ?? '';
+
+// True when this build serves the local-engine models from its own origin
+// (production; VITE_MODELS_BASE set at build time). Then no HuggingFace token is
+// needed to use the app offline, so the token prompts/gate are suppressed.
+const MODELS_SELF_HOSTED = typeof __MODELS_BASE__ === 'string' && __MODELS_BASE__ !== '';
 
 // Split a sentence into clickable words + inert chunks (spaces/punctuation), each
 // carrying char offsets RELATIVE to the sentence — the same coordinate space the
@@ -158,6 +164,7 @@ export default function App() {
         serverBaseUrl: SERVER_BASE_URL,
         hasToken: !!localStorage.getItem('hf_token'),
         consent: localStorage.getItem('server_consent') === '1',
+        modelsSelfHosted: MODELS_SELF_HOSTED,
       }
     );
 
@@ -247,7 +254,8 @@ export default function App() {
       const focus = findTokenAtOffset(analysis.tokens, start, end);
       if (!focus) { setGrammar(null); return; }
       const { related, phrases } = relate(analysis, focus.i);
-      setGrammar({ sentenceIdx, x, y, loading: false, analysis, focusIdx: focus.i, focusToken: focus, related, phrases });
+      const synonyms = await suggestSynonyms(focus, to);
+      setGrammar({ sentenceIdx, x, y, loading: false, analysis, focusIdx: focus.i, focusToken: focus, related, phrases, synonyms });
     } catch {
       setGrammar(null);
     }
@@ -348,13 +356,14 @@ export default function App() {
           serverConsent={serverConsent}
           onToggleConsent={handleToggleConsent}
           onCheckServer={checkServer}
+          selfHosted={MODELS_SELF_HOSTED}
         />
       )}
 
       <ModelStatusBar
         state={modelState}
         activeMode={activeMode}
-        hasToken={!!token}
+        hasToken={!!token || MODELS_SELF_HOSTED}
         crossOriginIsolated={self.crossOriginIsolated}
         onOpenSettings={() => { setTokenDraft(token); setShowSettings(true); }}
       />
@@ -531,7 +540,7 @@ function CefrTooltip({ tip }) {
 }
 
 function GrammarTooltip({ grammar, onClose }) {
-  const { x, y, loading, analysis, focusToken, phrases } = grammar;
+  const { x, y, loading, analysis, focusToken, phrases, synonyms } = grammar;
   const left = Math.min(x, window.innerWidth - 320);
   const desc = focusToken ? describeToken(focusToken) : null;
   const isServer = analysis?.source === 'server';
@@ -561,6 +570,12 @@ function GrammarTooltip({ grammar, onClose }) {
             <ul className="grammar-tip-relations">
               {phrases.map((ph, i) => <li key={i}>{ph}</li>)}
             </ul>
+          )}
+          {synonyms?.length > 0 && (
+            <div className="grammar-tip-synonyms">
+              <span className="grammar-tip-synonyms-label">Sinônimos</span>
+              {synonyms.map((s, i) => <span key={i} className="grammar-synonym">{s}</span>)}
+            </div>
           )}
           <div className="grammar-legend">
             <span className="grammar-legend-item"><span className="swatch grammar-focus" /> palavra</span>
@@ -653,7 +668,7 @@ function ModelStatusBar({ state, activeMode, hasToken, crossOriginIsolated, onOp
   return null;
 }
 
-function SettingsPanel({ tokenDraft, onTokenChange, onSave, onClearCache, onClose, serverConsent, onToggleConsent, onCheckServer }) {
+function SettingsPanel({ tokenDraft, onTokenChange, onSave, onClearCache, onClose, serverConsent, onToggleConsent, onCheckServer, selfHosted }) {
   // 'unknown' until probed; 'checking' | 'up' | 'down' afterwards.
   const [serverStatus, setServerStatus] = useState('unknown');
 
@@ -709,29 +724,39 @@ function SettingsPanel({ tokenDraft, onTokenChange, onSave, onClearCache, onClos
 
       <hr className="settings-divider" />
 
-      <p className="settings-desc">
-        O HuggingFace Hub requer um token para baixar modelos. Crie um token
-        gratuito (somente leitura) em{' '}
-        <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">
-          huggingface.co/settings/tokens
-        </a>.
-      </p>
-      <div className="settings-row">
-        <input
-          className="token-input"
-          type="password"
-          placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxx"
-          value={tokenDraft}
-          onChange={e => onTokenChange(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && onSave()}
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <button className="btn-primary" onClick={onSave}>Salvar</button>
-      </div>
-      <p className="settings-note">
-        O token é salvo apenas no seu navegador (localStorage) e nunca é enviado a nenhum servidor nosso.
-      </p>
+      {selfHosted ? (
+        <p className="settings-desc">
+          Esta instância serve os modelos de tradução do próprio servidor, então
+          <strong> não é necessário nenhum token</strong> para usar o modo local
+          offline.
+        </p>
+      ) : (
+        <>
+          <p className="settings-desc">
+            O HuggingFace Hub requer um token para baixar modelos. Crie um token
+            gratuito (somente leitura) em{' '}
+            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">
+              huggingface.co/settings/tokens
+            </a>.
+          </p>
+          <div className="settings-row">
+            <input
+              className="token-input"
+              type="password"
+              placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxx"
+              value={tokenDraft}
+              onChange={e => onTokenChange(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && onSave()}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <button className="btn-primary" onClick={onSave}>Salvar</button>
+          </div>
+          <p className="settings-note">
+            O token é salvo apenas no seu navegador (localStorage) e nunca é enviado a nenhum servidor nosso.
+          </p>
+        </>
+      )}
       <hr className="settings-divider" />
       <div className="settings-cache-row">
         <div>

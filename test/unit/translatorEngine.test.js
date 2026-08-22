@@ -105,6 +105,37 @@ test('local with no token → onNeedToken, does not translate', async () => {
   assert.equal(engine.local.calls.length, 0);
 });
 
+test('local with no token but self-hosted models → translates, no onNeedToken', async () => {
+  let needed = 0;
+  const engine = makeEngine(
+    { onNeedToken: () => { needed += 1; } },
+    { hasToken: false, consent: false, modelsSelfHosted: true },
+    { createLocal: fakeProviderFactory('local'), createServer: fakeProviderFactory('server') },
+  );
+  await engine.translate({ text: 'oi', direction: 'pt-de', id: 1 });
+  assert.equal(needed, 0);
+  assert.equal(engine.local.calls.length, 1);
+});
+
+test('server error fallback with no token but self-hosted → re-dispatches locally', async () => {
+  let needed = 0;
+  const engine = makeEngine(
+    { onNeedToken: () => { needed += 1; } },
+    { hasToken: false, consent: true, modelsSelfHosted: true },
+    {
+      createLocal: fakeProviderFactory('local'),
+      createServer: fakeProviderFactory('server', {
+        health: true,
+        onTranslate: (self, req) => self.handlers.onError({ engine: 'server', recoverable: true, id: req.id }),
+      }),
+    },
+  );
+  await engine.translate({ text: 'oi', direction: 'pt-de', id: 7 });
+  assert.equal(needed, 0);
+  assert.equal(engine.local.calls.length, 1);
+  assert.equal(engine.local.calls[0].id, 7);
+});
+
 test('setToken updates hasToken and forwards to local provider', async () => {
   const engine = makeEngine({}, { hasToken: false, consent: false }, {
     createLocal: fakeProviderFactory('local'),

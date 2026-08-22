@@ -25,6 +25,13 @@ const allowedHosts = (process.env.VITE_ALLOWED_HOSTS || '')
   .map((h) => h.trim())
   .filter(Boolean);
 
+// Where the local (in-browser) engine fetches its ONNX models from. Empty by
+// default (incl. dev/preview) → the HuggingFace Hub, which needs a token. A
+// production build sets VITE_MODELS_BASE=/models (see scripts/setup-prod.sh) so
+// the models are served from the app's own origin and NO token is required to
+// use the app offline. See src/translator.worker.js.
+const modelsBase = (process.env.VITE_MODELS_BASE || '').trim();
+
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   worker: { format: 'es' },
@@ -34,6 +41,8 @@ export default defineConfig(({ mode }) => ({
   define: {
     // Inject token only in dev; empty string in production.
     __DEV_HF_TOKEN__: JSON.stringify(mode === 'development' ? devHfToken : ''),
+    // Same-origin models path in production (via VITE_MODELS_BASE); '' → HF Hub.
+    __MODELS_BASE__: JSON.stringify(modelsBase),
   },
   server: { headers: crossOriginHeaders, allowedHosts },
   preview: { headers: crossOriginHeaders, allowedHosts },

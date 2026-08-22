@@ -10,10 +10,13 @@
 //   • cross-origin ONNX Runtime wasm from cdn.jsdelivr.net → cache-first, so the
 //     inference runtime is available offline too.
 //
-// Model weights come from HuggingFace and are cached separately by Transformers.js
-// (env.useBrowserCache), so we deliberately DON'T intercept those requests.
+// Model weights are cached separately by Transformers.js (env.useBrowserCache),
+// so we deliberately DON'T intercept those requests — whether they come from
+// HuggingFace (cross-origin) or, in production, from this app's own origin under
+// /models/ (self-hosted). Intercepting the latter with stale-while-revalidate
+// would needlessly re-download ~hundreds of MB in the background on every visit.
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `machado-shell-${VERSION}`;
 const RUNTIME_CACHE = `machado-runtime-${VERSION}`;
 const CDN_CACHE = `machado-cdn-${VERSION}`;
@@ -66,8 +69,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2) Same-origin assets: stale-while-revalidate.
-  if (url.origin === self.location.origin) {
+  // 2) Same-origin assets: stale-while-revalidate. Self-hosted model files under
+  // /models/ are excluded — Transformers.js caches those itself (see top note).
+  if (url.origin === self.location.origin && !url.pathname.startsWith('/models/')) {
     event.respondWith(
       caches.open(RUNTIME_CACHE).then((cache) =>
         cache.match(request).then((cached) => {

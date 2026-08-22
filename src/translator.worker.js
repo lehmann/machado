@@ -5,10 +5,22 @@ import { assessSentence } from './cefr.js';
 // first fetches http://<origin>/models/<model>/config.json etc. The Vite dev
 // server answers ANY unknown route with index.html (SPA fallback) — a 200 OK of
 // ~885 bytes — which transformers tries to parse as JSON and silently hangs on.
-// Disabling local models forces requests straight to the HuggingFace remote host.
+// Disabling local models forces requests straight to the configured remote host.
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
-env.useBrowserCache = true;
+env.useBrowserCache = true; // TF.js caches weights for offline, whatever the source
+
+// Where model files come from. Empty (dev/preview) → the default remote host, the
+// HuggingFace Hub, with the token injected below. A production build sets
+// __MODELS_BASE__ = '/models' (Vite define via VITE_MODELS_BASE; see setup-prod.sh)
+// so the models are served from the app's OWN origin at `${origin}/models/{model}/…`
+// — no HuggingFace token needed offline. The token-injection hook below only
+// rewrites HF URLs, so our own origin never receives an Authorization header.
+const MODELS_BASE = (typeof __MODELS_BASE__ === 'string') ? __MODELS_BASE__ : '';
+if (MODELS_BASE) {
+  env.remoteHost = self.location.origin;
+  env.remotePathTemplate = `${MODELS_BASE.replace(/^\/|\/$/g, '')}/{model}/`;
+}
 
 // Point ort-web at its .wasm binaries. Vite pre-bundles the JS into /.vite/deps/
 // but does NOT emit the .wasm files there, and the node_modules path depends on

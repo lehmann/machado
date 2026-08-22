@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Provision machado for PRODUCTION on an Ubuntu server. One command that:
-#   1. builds the frontend (dist/)                    → served by the API
-#   2. creates server/.venv and installs the full ML stack (requirements.txt)
-#   3. downloads the spaCy models (CEFR + grammar)
-#   4. converts NLLB-200 → CTranslate2 (~5 GB one-time; skip with --skip-model)
-#   5. installs a systemd unit "machado" that runs the API + SPA on one origin
+#   1. downloads the local-engine ONNX models (web-models/, ~474 MB) so the
+#      browser fetches them from this origin — no HuggingFace token needed offline
+#   2. builds the frontend (dist/)                    → served by the API
+#   3. creates server/.venv and installs the full ML stack (requirements.txt)
+#   4. downloads the spaCy models (CEFR + grammar)
+#   5. converts NLLB-200 → CTranslate2 (~5 GB one-time; skip with --skip-model)
+#   6. installs a systemd unit "machado" that runs the API + SPA on one origin
 #
 # It is idempotent — re-running skips work already done. It does NOT modify the
 # dev workflow (scripts/dev.sh is untouched); production is a separate path.
@@ -13,6 +15,7 @@
 #   scripts/setup-prod.sh                 # GPU (cuda), convert model, install systemd unit
 #   scripts/setup-prod.sh --cpu           # run translation on CPU (no NVIDIA GPU)
 #   scripts/setup-prod.sh --skip-model    # deps + spaCy only; convert NLLB later
+#   scripts/setup-prod.sh --skip-web-models  # don't self-host ONNX models (browser uses HF + a token)
 #   scripts/setup-prod.sh --no-systemd    # prepare everything but don't touch systemd
 #
 # Env overrides: SERVER_HOST (0.0.0.0), SERVER_PORT (8002), SERVICE_NAME (machado),
@@ -33,12 +36,15 @@ CT2_DEVICE="cuda"
 CT2_COMPUTE="int8_float16"
 CONVERT_MODEL=1
 WANT_SYSTEMD=1
+FETCH_WEB_MODELS=1
+WEB_MODELS_DIR="$ROOT/web-models"
 
 for arg in "$@"; do
   case "$arg" in
-    --cpu)        CT2_DEVICE="cpu"; CT2_COMPUTE="int8" ;;
-    --skip-model) CONVERT_MODEL=0 ;;
-    --no-systemd) WANT_SYSTEMD=0 ;;
+    --cpu)            CT2_DEVICE="cpu"; CT2_COMPUTE="int8" ;;
+    --skip-model)     CONVERT_MODEL=0 ;;
+    --skip-web-models) FETCH_WEB_MODELS=0 ;;
+    --no-systemd)     WANT_SYSTEMD=0 ;;
     -h|--help)
       awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "${BASH_SOURCE[0]}"
       exit 0
@@ -73,7 +79,22 @@ python3 -c 'import venv' >/dev/null 2>&1 || \
   die "python3 venv module missing — run: sudo apt-get install -y python3-venv"
 ok "node $(node -v), $(python3 --version)"
 
-# ── 1. frontend build ──────────────────────────────────────────────
+# ── 1. local-engine ONNX models (self-hosted) ─────────────────────
+# Download the models the in-browser translator uses into web-models/, so the
+# app serves them from its own origin and NO HuggingFace token is needed offline.
+# Done BEFORE the build so VITE_MODELS_BASE only points at /models when the files
+# actually exist. With --skip-web-models the browser falls back to the HF Hub
+# (requiring a token), exactly as before.
+if [ "$FETCH_WEB_MODELS" = "1" ]; then
+  info "Downloading local-engine ONNX models → web-models/ (~474 MB, one-time)…"
+  node "$ROOT/scripts/fetch-models.mjs" --out "$WEB_MODELS_DIR"
+  export VITE_MODELS_BASE="/models"
+  ok "Models ready — the browser will fetch them from this origin (no token needed)."
+else
+  warn "Skipping self-hosted models (--skip-web-models). Users must configure an HF token."
+fi
+
+# ── 2. frontend build ──────────────────────────────────────────────
 # No VITE_SERVER_URL → the SPA talks to the same origin, which is exactly the
 # single-port layout the systemd unit serves. huggingface.token is never baked
 # into a production build (vite.config injects an empty string in prod).
@@ -88,7 +109,7 @@ fi
 npm run build
 ok "Frontend built → $ROOT/dist"
 
-# ── 2. backend venv + full ML stack ────────────────────────────────
+# ── 3. backend venv + full ML stack ────────────────────────────────
 if [ ! -x "$PY" ]; then
   info "Creating virtualenv at server/.venv…"
   python3 -m venv "$VENV"
@@ -98,13 +119,13 @@ info "Installing backend dependencies (server/requirements.txt)…"
 "$PY" -m pip install -r "$ROOT/server/requirements.txt"
 ok "Backend deps installed."
 
-# ── 3. spaCy models (CEFR + grammar) ───────────────────────────────
+# ── 4. spaCy models (CEFR + grammar) ───────────────────────────────
 info "Downloading spaCy models (pt + de)…"
 "$PY" -m spacy download pt_core_news_sm
 "$PY" -m spacy download de_core_news_sm
 ok "spaCy models ready — CEFR and grammar will report available."
 
-# ── 4. NLLB → CTranslate2 conversion ───────────────────────────────
+# ── 5. NLLB → CTranslate2 conversion ───────────────────────────────
 if [ "$CONVERT_MODEL" = "1" ]; then
   if [ -d "$ROOT/server/models/nllb-200-distilled-1.3B-ct2" ]; then
     ok "NLLB model already converted — skipping."
@@ -124,13 +145,18 @@ else
   warn "  PATH=\"$VENV/bin:\$PATH\" bash server/scripts/convert_model.sh"
 fi
 
-# ── 5. systemd unit ────────────────────────────────────────────────
+# ── 6. systemd unit ────────────────────────────────────────────────
 if [ "$WANT_SYSTEMD" = "1" ]; then
   UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
   info "Installing systemd unit → $UNIT_PATH (device: $CT2_DEVICE)…"
   # An optional env file lets you tweak runtime vars without regenerating the
   # unit (e.g. NLLB_CT2_PATH, BEAM_SIZE). The leading '-' makes it optional.
   ENV_FILE="$ROOT/server/.env.prod"
+  # Serve the self-hosted local-engine models at /models (only when present).
+  WEB_MODELS_ENV=""
+  if [ "$FETCH_WEB_MODELS" = "1" ] && [ -d "$WEB_MODELS_DIR" ]; then
+    WEB_MODELS_ENV="Environment=MACHADO_WEB_MODELS_DIR=${WEB_MODELS_DIR}"
+  fi
   UNIT_CONTENT="$(cat <<EOF
 [Unit]
 Description=machado (PT-BR <-> DE translator) — API + SPA on one origin
@@ -144,6 +170,7 @@ Group=${SERVICE_GROUP}
 WorkingDirectory=${ROOT}/server
 EnvironmentFile=-${ENV_FILE}
 Environment=MACHADO_STATIC_DIR=${ROOT}/dist
+${WEB_MODELS_ENV}
 Environment=CT2_DEVICE=${CT2_DEVICE}
 Environment=CT2_COMPUTE=${CT2_COMPUTE}
 ExecStart=${VENV}/bin/uvicorn app.main:app --host ${SERVER_HOST} --port ${SERVER_PORT}
@@ -164,7 +191,9 @@ EOF
     warn "GPU: ensure the NVIDIA driver is installed and '${SERVICE_USER}' can access /dev/nvidia* (video/render groups)."
 else
   warn "Skipped systemd (--no-systemd). Run manually with:"
-  warn "  MACHADO_STATIC_DIR=$ROOT/dist CT2_DEVICE=$CT2_DEVICE CT2_COMPUTE=$CT2_COMPUTE \\"
+  _wm=""
+  [ "$FETCH_WEB_MODELS" = "1" ] && [ -d "$WEB_MODELS_DIR" ] && _wm="MACHADO_WEB_MODELS_DIR=$WEB_MODELS_DIR "
+  warn "  MACHADO_STATIC_DIR=$ROOT/dist ${_wm}CT2_DEVICE=$CT2_DEVICE CT2_COMPUTE=$CT2_COMPUTE \\"
   warn "  $VENV/bin/uvicorn app.main:app --host $SERVER_HOST --port $SERVER_PORT   (run from server/)"
 fi
 
